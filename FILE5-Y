@@ -1,0 +1,248 @@
+
+BASIC YARN ADMINISTRATION
+As with Hadoop version 1, there are a multitude of configuration properties available to the administrators in Hadoop version 2. YARN has introduced and changed some configuration properties. The basic files are as follows:
+
+Image core-default.xml: System-wide properties
+
+Image hdfs-default.xml: Hadoop Distributed File System properties
+
+Image mapred-default.xml: Properties for the YARN MapReduce framework
+
+Image yarn-default.xml: YARN properties.
+
+You can find a complete list of properties for all these files at http://hadoop.apache.org/docs/current/ (look at the lower-left side of the page under “Configuration”). A full discussion of all options is beyond the scope of this book, but you can find comments and defaults for each of the properties on the Apache Hadoop site. There are, however, some important administrative tasks worth mentioning.
+
+YARN Administrative Tools
+YARN has several built-in administrative features. These can be found by examining the yarn rmadmin command-line utility’s description as shown in the following listing. Some of these options will be illustrated later.
+
+Click here to view code image
+
+# yarn rmadmin -help
+rmadmin is the command to execute Map-Reduce administrative commands.
+The full syntax is:
+
+hadoop rmadmin [-refreshQueues] [-refreshNodes]
+[-refreshSuperUserGroupsConfiguration] [-refreshUserToGroupsMappings]
+[-refreshAdminAcls] [-refreshServiceAcl] [-getGroup [username]]
+[-help [cmd]]
+
+-refreshQueues: Reload the queues' acls, states, and scheduler-specific
+                properties. ResourceManager will reload the mapred-queues
+                configuration file.
+
+-refreshNodes: Refresh the hosts information at the ResourceManager.
+
+-refreshUserToGroupsMappings: Refresh user-to-groups mappings.
+
+-refreshSuperUserGroupsConfiguration: Refresh superuser proxy groups
+                                      mappings.
+
+-refreshAdminAcls: Refresh acls for administration of ResourceManager.
+
+-refreshServiceAcl: Reload the service-level authorization policy file.
+                    ResourceManager will reload the authorization
+                    policy file.
+
+-getGroups [username]: Get the groups which given user belongs to
+
+-help [cmd]:    Displays help for the given command or all commands
+                if none is specified.
+
+
+Generic options supported are
+-conf <configuration file>     specify an application configuration file
+-D <property=value>            use value for given property
+-fs <local|namenode:port>      specify a namenode
+-jt <local|jobtracker:port>    specify a job tracker
+-files <comma separated list of files>    specify comma separated files to
+                                          be copied to the mapreduce
+                                          cluster
+-libjars <comma separated list of jars>    specify comma separated jar
+                                           files to include in the
+                                           class path.
+-archives <comma separated list of archives>    specify comma separated
+                                                archives to be unarchived
+                                                on the compute machines.
+
+The general commandline syntax is:
+bin/hadoop command [genericOptions] [commandOptions]
+
+Adding and Decommissioning YARN Nodes
+In typical installations, nodes play the roles of both HDFS data node and YARN worker node. The procedures for adding and decommissioning HDFS nodes can be found in Appendix F. The following discussion is limited to YARN worker nodes, which can be managed by running the ResourceManager admin client.
+
+Adding new nodes requires that all the necessary software and configuration be loaded on the new node. The following technique can be used for both adding and decommissioning nodes. Two files dictate which nodes are to be accepted and which are not to be used: yarn.resourcemanager.nodes.include-path and yarn.resourcemanager.exclude-path. The first property points to a file with a list of nodes that are accepted by the ResourceManager, and the second property points to a file with a list of nodes that are explicitly deemed as either not acceptable by the ResourceManager or possibly running but removed/decommissioned from ResourceManager use. Both properties point to a local file system path on the ResourceManager node. They can have hostnames or IP addresses separated by a newline, space, or tab. Lines that start with the “#” character are treated as comments. Once the files are modified by the administrator (only administrators should have write permission to these files on the ResourceManager local file system for security reasons), the administrator can then run the following command to inform ResourceManager about the change in the nodes list:
+
+Click here to view code image
+
+# yarn rmadmin -refreshNodes
+
+Only administrators can perform this task. Administrators are defined as users restricted by the admin-acl that is dictated by the configuration property yarn.admin.acl on the ResourceManager.
+
+Capacity Scheduler Configuration
+Detailed information on configuration of the Capacity scheduler can be found in Chapter 8, “Capacity Scheduler in YARN.” Queues can be reconfigured and added as described here.
+
+Changing queue properties and adding new queues are very simple processes. You can use the configure-hadoop2.sh script, described previously, for this purpose, or you can directly edit $HADOOP_CONF_DIR/etc/hadoop/capacity-scheduler.xml file.
+
+Click here to view code image
+
+# yarn rmadmin -refreshQueues
+
+Queues cannot be deleted at this point of time. Only addition of new queues is supported, and the updated queue configuration should be a valid one (i.e., the queue capacity at each level should be equal to 100%).
+
+YARN WebProxy
+The Web Application Proxy is a separate proxy server in YARN for managing security with the cluster web interface on ApplicationMasters. By default, the proxy is run as part of the Resource Manager itself, but it can be configured to run in a stand-alone mode by changing the configuration property yarn.web-proxy.address. Also by default, it is set to an empty string, which means it runs in the ResourceMaster. In a stand-alone mode, yarn.web-proxy.principal and yarn.web-proxy.keytab control the Kerberos principal name and the corresponding keytab for use in secure mode.
+
+Using the JobHistoryServer
+The removal of the JobTracker and migration of MapReduce from a system to an application-level framework necessitated creation of a place to store MapReduce job history. The JobHistoryServer allows all YARN MapReduce applications with a central location to aggregate completed jobs for historical reference and debugging. The settings for the JobHistoryServer can be found in the mapred-default.xml file.
+
+Refreshing User-to-Groups Mappings
+The hadoop.security.group.mapping property determines the user-to-group mappings that the ResourceManager uses. Such a class needs to implement the interface org.apache.hadoop.security.GroupMappingServiceProvider. The default value is org.apache.hadoop.security.ShellBasedUnixGroupsMapping. This refresh operation needs to happen whenever a user is added to the system and whenever a user’s list of groups changes. Only cluster administrators can invoke this refresh:
+
+Click here to view code image
+
+# rmadmin -refreshUserToGroupsMapping
+
+Refreshing Superuser Proxy Groups Mappings
+The hadoop.proxyuser.<proxy-user-name>.groups property needs to be configured to allow the user $proxy-user-name to be treated as a special privileged user who can impersonate any other users who are members of the value of this property. The value can be a comma-separated list of groups. The value of hadoop.proxyuser.<proxy-user-name>.hosts can be a comma-separated list of hosts from which $proxy-user-name can be restricted to do the previously mentioned user impersonation. Once either of these configurations is changed, administrators will have to refresh the ResourceManager:
+
+Click here to view code image
+
+# yarn rmadmin -refreshSuperUserGroupsConfiguration
+
+The $proxy-user-name noted previously can, therefore, perform the impersonation only to specific users (who are members of the previous groups) and only from specific hosts. This super-user itself also must be authenticated using Kerberos at the time of such impersonation.
+
+Refreshing ACLs for Administration of ResourceManager
+The yarn.admin.acl property specifies the Access Control Lists (ACLs) indicating who can be an administrator of the YARN cluster. A cluster administrator has special privileges to refresh queues, node lists, user-group mappings, the admin list itself, and service-level ACLs. This administrator can also view any user’s applications, access all web interfaces, invoke any web services, and kill any application in any queue. The value of this configuration property is a comma-separated list of users and groups. The user list comes first (comma separated) and is separated by a space, followed by the list of groups—for example, “user1,user2 group1,group2”. Whenever this property changes, administrators must refresh the ResourceManager as follows:
+
+Click here to view code image
+
+# yarn rmadmin -refreshAdminAcls
+
+Reloading the Service-level Authorization Policy File
+The administrator may also have to reload the authorization policy file using the following command:
+
+Click here to view code image
+
+# yarn rmadmin -refreshServiceAcl
+
+Managing YARN Jobs
+YARN jobs can be managed using the “yarn application” command. The following options, including -kill, -list, and -status are available to the administrator with this command. MapReduce jobs can also be controlled with the “mapred job” command.
+
+Click here to view code image
+
+usage: application
+ -appTypes <Comma-separated list of application types>   Works with
+                           --list to filter applications based on
+                           their type.
+ -help                     Displays help for all commands.
+ -kill <Application ID>    Kills the application.
+ -list                     Lists applications from the RM. Supports optional
+                           use of –appTypes to filter applications based
+                           on application type.
+ -status <Application ID>  Prints the status of the application.
+
+Setting Container Memory
+Controlling container memory takes place through three important values in the yarn-site.xml file:
+
+Image yarn.nodemanager.resource.memory-mb is the amount of memory the NodeManager can use for containers.
+
+Image yarn.scheduler.minimum-allocation-mb is the smallest container allowed by the ResourceManager. A requested container smaller than this value will result in an allocated container of this size (default 1024 MB).
+
+Image yarn.scheduler.maximum-allocation-mb is the largest container allowed by the ResourceManager (default 8192 MB).
+
+Setting Container Cores
+It is possible to set the number of cores for containers using the following properties in the yarn-stie.xml:
+
+Image yarn.scheduler.minimum-allocation-vcores is the minimum number of cores a container can be requested to have.
+
+Image yarn.scheduler.maximum-allocation-vcores is the maximum number of cores a container can be requested to have.
+
+Image yarn.nodemanager.resource.cpu-vcores is the number of cores that containers can request from this node.
+
+Setting MapReduce Properties
+Since MapReduce now runs as a YARN application, it may be necessary to adjust some of the mapred-site.xml properties as they relate to the map and reduce containers. The following properties are used to set some Java arguments and memory size for both the map and reduce containers:
+
+Image mapred.child.java.opts provides a larger or smaller heap size for child JVMs of maps (e.g., --Xmx2048m).
+
+Image mapreduce.map.memory.mb provides a larger or smaller resource limit for maps (default = 1536 MB)
+
+Image mapreduce.reduce.memory.mb provides a resource-limit for child JVMs of maps (default = 3072 MB)
+
+Image mapreduce.reduce.java.opts provides a larger or smaller heap size for child reducers.
+
+User Log Management
+User logs of Hadoop jobs serve multiple purposes. First and foremost, they can be used to debug issues that occur while running a MapReduce application, including correctness problems with the application itself, race conditions when running on a cluster, and debugging task/job failures due to hardware or platform bugs. Second, one can do historical analyses of the logs to see how individual tasks in jobs or workflows perform over time. One can even analyze the Hadoop MapReduce user logs with Hadoop MapReduce to determine any performance issues.
+
+Handling of user logs generated by applications has been one of the biggest pain points for Hadoop installations in the past. In Hadoop version 1, user logs are left on individual nodes by the TaskTracker, and the management of the log files on local nodes is both insufficient for longer-term analyses and non-deterministic for user access. YARN tackles this log management issue by having the NodeManagers provide the option of moving these logs securely onto HDFS after the application completes.
+
+Log Aggregation in YARN
+With YARN, logs for all the containers that belong to a single application and that ran on a given NodeManager are aggregated and written out to a single (possibly compressed) log file at a configured location in the designated file system. In the current implementation, once an application finishes, one will have an application-level log directory and a per-node log file that consists of logs for all the containers of the application that ran on this node.
+
+With Hadoop version 2, users can gain access to these logs via YARN command-line tools, through the web UI, or directly from the file system. These logs potentially can be stored for much longer times than was possible in Hadoop version 1 because they reside within a large distributed file system. Hadoop version 2 does not need to truncate logs to very small lengths (as long as the log sizes are reasonable) and can afford to store the entire logs for longer periods of time. In addition, while the containers are running, the logs are written to multiple directories on each node for effective load balancing and improved fault tolerance. In addition, an AggregatedLogDeletionService service periodically deletes aggregated logs; currently, it runs only inside the MapReduce JobHistoryServer.
+
+Web User Interface
+On the web interfaces, log aggregation is completely hidden from the user. While a MapReduce application is running, users can see the logs from the ApplicationMaster UI, which redirects the user to the NodeManager UI. Once an application finishes, the completed information is owned by the MapReduce JobHistoryServer, which again serves user logs transparently.
+
+Command-Line Access
+In addition to the web UI, a command-line utility can be used to interact with logs. The usage option can be listed by running the following:
+
+Click here to view code image
+
+$ yarn logs
+Retrieve logs for completed YARN applications.
+usage: yarn logs -applicationId <application ID> [OPTIONS]
+
+general options are:
+-appOwner <Application Owner>   AppOwner (assumed to be current user if
+                                not specified)
+-containerId <Container ID>     ContainerId (must be specified if node
+                                address is specified)
+-nodeAddress <Node Address>     NodeAddress in the format nodename:port
+                               (must be specified if container ID is specified)
+
+For example, to print all the logs for a given application, one can simply enter the following line:
+
+Click here to view code image
+
+$ yarn logs -applicationId <application ID>
+
+Logs of only one specific container can be printed using the following command:
+
+Click here to view code image
+
+yarn logs -applicationId <application ID> -containerId <Container ID> \
+-nodeAddress <Node Address>
+
+The obvious advantage with the command-line utility is that now you can use the regular shell utilities to help process files.
+
+Log Administration and Configuration
+The general log-related configuration properties are yarn.nodemanager.log-dirs and yarn.log-aggregation-enable. The function of each is described next.
+
+The yarn.nodemanager.log-dirs property determines where the container logs are stored on the node when the containers are running. Its default value is ${yarn.log.dir}/userlogs. An application’s localized log directory will be found in {yarn.nodemanager.log-dirs}/application_${appid}. Individual containers’ log directories will be below this level, in subdirectories named container_{$containerId}.
+
+For MapReduce applications, each container directory will contain the files stderr, stdin, and syslog generated by that container. Other frameworks can choose to write more or fewer files—YARN doesn’t dictate the file names and number of files.
+
+The yarn.log-aggregation-enable property specifies whether to enable or disable log aggregation. If this function is disabled, NodeManagers will keep the logs locally (as in Hadoop version 1) and not aggregate them.
+
+The following properties are in force when log aggregation is enabled:
+
+Image yarn.nodemanager.remote-app-log-dir: This location is found on the default file system (usually HDFS) and indicates where the NodeManagers should aggregate logs. It should not be the local file system, because otherwise serving daemons such as the history server will not able to serve the aggregated logs. The default value is /tmp/logs.
+
+Image yarn.nodemanager.remote-app-log-dir-suffix: The remote log directory will be created at {yarn.nodemanager.remote-app-log-dir}/${user}/{suffix}. The default suffix value is “logs”.
+
+Image yarn.log-aggregation.retain-seconds: This property defines how long to wait before deleting aggregated logs; –1 or another negative number disables the deletion of aggregated logs. Be careful not to set this property to a too-small value so as to not burden the distributed file system.
+
+Image yarn.log-aggregation.retain-check-interval-seconds: This property determines how long to wait between aggregated log retention checks. If its value is set to 0 or a negative value, then the value is computed as one-tenth of the aggregated log retention time. As with the previous configuration property, be careful not to set it to an inordinately low value. The default is –1.
+
+Image yarn.log.server.url: Once an application is done, NodeManagers redirect the web UI users to this URL, where aggregated logs are served. Today it points to the MapReduce-specific JobHistory.
+
+The following properties are used when log aggregation is disabled:
+
+Image yarn.nodemanager.log.retain-seconds: The time in seconds to retain user logs on the individual nodes if log aggregation is disabled. The default is 10800.
+
+Image yarn.nodemanager.log.deletion-threads-count: The number of threads used by the NodeManagers to clean up logs once the log retention time is hit for local log files when aggregation is disabled.
+
+Log Permissions
+The remote root log directory is expected to have the permissions 1777 with ${NMUser} as owner and to be directory- and group-owned by ${NMGroup} (i.e., the group to which NMUser belongs).
+
+Each application-level directory will be created with permission 770, but will be user-owned by the application submitter and group-owned by ${NMGroup}. This feature allows application submitters to access aggregated logs for their own use; ${NMUser} can access or modify the files for log management. Also, ${NMGroup}* should be a limited-access group so that there are no access leaks.
