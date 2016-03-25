@@ -1,0 +1,266 @@
+INSTALLING HADOOP WITH APACHE AMBARI
+A script-based manual Hadoop installation can turn out to be a challenging process as it scales out from tens of nodes to thousands of nodes. Because of this complexity, a tool with the ability to manage installation, configuration, and monitoring of the Hadoop cluster became a much-needed addition to the Hadoop ecosystem. Apache Ambari provides the means to handle these simple, yet highly valuable tasks by utilizing an agent on each node to install required components, change configuration files, and monitor performance or failures of nodes either individually or as an aggregate. Both administrators and developers will find many of the Ambari features useful.
+
+Installation with Ambari is faster, easier, and less error prone than manually setting up each service’s configuration file. As an example, a 12-node cluster install of Hortonworks HDP2.X services (HDFS, MRv2, YARN, Hive, Sqoop, ZooKeeper, HCatalog, Oozie, HBase, and Pig) was accomplished in less than one hour with this tool. Ambari can dramatically cut down on the number of people required to install large clusters and increase the speed with which development environments can be created.
+
+Configuration files are maintained by an Ambari server acting as the primary interface to make changes to the cluster. Ambari guarantees that the configuration files on all nodes are the same by automatically redistributing them to the nodes every time a service’s configuration changes. From an operational perspective, this approach provides peace of mind; you know that the entire cluster—from 10 to 4000-plus nodes—is always in sync. For developers, it allows for rapid performance tuning because the configuration files can be easily manipulated.
+
+Monitoring encompasses the starting and stopping of services, along with reporting on whether a service is up or down, network usage, HDFS, YARN, and a multitude of other load metrics. Ganglia and Nagios report back to the Ambari server monitoring cluster health on issues ranging from utilization of services such as HDFS storage to failures of stack components or entire nodes. Users can also take advantage of the ability to monitor a number of YARN metrics such as cluster memory, total containers, NodeManagers, garbage collection, and JVM metrics. An example of the Ambari dashboard is shown in Figure 5.4.
+
+Performing an Ambari-based Hadoop Installation
+Compared to a manual installation of Hadoop 2, when using Ambari there are significantly fewer software requirements and operating system tasks like creating users or groups and directory structures to perform. To manage the cluster with Ambari, we install two components:
+
+1. The Ambari-Server, which should be its own node separate from the rest of the cluster
+
+2. An Ambari-Agent on each node of the rest of the cluster that requires managing
+
+For the purposes of this installation, we will reference the HDP 2.0 (Hortonworks Data Platform) documentation for the Ambari Automated Install (see http://docs.hortonworks.com/#2.0 for additional information). In addition, although Ambari may eventually work with other Hadoop installations, we will use the freely available HDP version to ensure a successful installation.
+
+Step 1: Check Requirements
+As of this writing, RHEL 5 and 6, CentOS 5 and 6, OEL (Oracle Enterprise Linux) 5 and 6, and SLS 11 are supported by HDP 2, however Ubuntu is not supported at this time. Ensure that each node has yum, rpm, scp, curl, and wget. Additionally, ntpd should be running. Hive/HCatalog, Oozie, and Ambari all require their own internal databases; we can control these databases during installation, but they will need to be installed. If your cluster nodes do not have access to the Internet, you will have to mirror the HDP repository and set up your own local repositories.
+
+Step 2: Install the Ambari Server
+Perform the following actions to download the Ambari repository, add it to your existing yum.repos.d on the server node, and install the packages:
+
+Click here to view code image
+
+# wget http://public-repo-1.hortonworks.com/ambari-beta/centos6/1.x/beta/ambari.repo
+# cp ambari.repo /etc/yum.repos.d
+# yum -y install ambari-server
+
+Next we set up the server. At this point, you can decide whether you want to customize the Ambari-Server database; the default is PostgreSQL. You will also be prompted to accept the JDK license unless you specify the --java-home option with the path of the JDK on all nodes in the cluster. For this installation, we will use the default values as signified by the silent install option. If the following command is successful, you should see “Ambari Server ‘setup’ completed successfully.”
+
+Click here to view code image
+
+# ambari-server setup --silent
+
+Step 3: Install and Start Ambari Agents
+Most of today’s current enterprise security divisions have a hard time accepting some of Hadoop’s more unusual requirements, such as root password-less ssh between all nodes in the cluster. Root password-less ssh is used only to automate installation of the Ambari agents and is not required for day-to-day operation. To stay within many security guidelines, we will be performing a manual install of the Ambari-Agent on each node in the cluster. Be sure to set up the repository files on each node as described in Step 2. Optionally, you can use pdsh and pdcp with password-less root to help automate the installation of Ambari agents across the cluster. To install the agent, enter the following for each node:
+
+Click here to view code image
+
+# yum -y install ambari-agent
+
+Next, configure the Ambari-Agent ini file with the FQDN of the Ambari-Server. By default, this value is localhost. This task can be done using sed.
+
+Click here to view code image
+
+# sed -i 's/hostname=localhost/hostname=yourAmbariServerFQDNhere/g' /etc/ambari-agent/conf/ambari-agent.ini
+
+On all nodes, start Ambari with the following command:
+
+# ambari-agent start
+
+Step 4: Start the Ambari Server
+To start the Ambari-Server, enter
+
+# ambari-server start
+
+Log into the Ambari-Server web console using http://AmbariServerFQDN:8080. If everything is working properly, you should see the login screen shown in Figure 5.5. The default login is username = admin and password = admin.
+
+Image
+Figure 5.5 Ambari sign-in screen
+
+Step 5: Install an HDP2.X Cluster
+The first task is to name your cluster.
+
+1. Enter a name for your cluster and click the green “Next” button (see Figure 5.6).
+
+Image
+Figure 5.6 Enter a cluster name
+
+2. The next option is to select the version of the HDP software stack. Currently the options include only the recent version of HDP. Select the 2.X stack option and click Next as shown in Figure 5.7.
+
+Image
+Figure 5.7 Select a Hadoop 2.X software stack
+
+3. Next, Ambari will ask for your list of nodes, one per line, and ask you to select manual or private key registration. In this installation, we are using the manual method (see Figure 5.8).
+
+Image
+Figure 5.8 Hadoop install options
+
+The installed Ambari-Agents should register with the Ambari-Server at this point. Any install warnings will also be displayed here, such as ntpd not running on the nodes. If there are issues or warnings, the registration window will indicate these as shown in Figure 5.9. Note that the example is installing a “cluster” of one node.
+
+Image
+Figure 5.9 Ambari host registration screen
+
+If everything is set correctly, your window should look like Figure 5.10.
+
+Image
+Figure 5.10 Successful Ambari host registration screen
+
+4. The next step is to select which components of the HDP2.X stack you want to install. At the very least, you will want to install HDFS, YARN, and MapReduceV2. In Figure 5.11, we will install everything.
+
+Image
+Figure 5.11 Ambari services selection
+
+5. The next step is to assign functions to the various nodes in your cluster (see Figure 5.12). The Assign Masters window allows for the selection of master nodes—that is, NameNode, ResourceManager, HBaseMaster, Hive Server, Oozie Server, etc. All nodes that have registered with the Ambari-Server will be available in the drop-down selection box. Remember that the ResourceManager has replaced the JobTracker from Hadoop version 1 and in a multi-node installation should always be given its own dedicated node.
+
+Image
+Figure 5.12 Ambari host assignment
+
+6. In this step, you assign NodeManagers (which run YARN containers), RegionServers, and DataNodes (HDFS). Remember that the NodeManager has replaced the TaskTracker from Hadoop version 1, so you should always co-locate one of these node managers with a DataNode to ensure that local data is available for YARN containers. The selection window is shown in Figure 5.13. Again, this example has only a single node.
+
+Image
+Figure 5.13 Ambari slave and client component assignment
+
+7. The next set of screens allows you to define any initial parameter changes and usernames for the services selected for installation (i.e., Hive, Oozie, and Nagios). Users are required to set up the database passwords and alert reporting email before continuing. The Hive database setup is pictured in Figure 5.14.
+
+Image
+Figure 5.14 Ambari customized services window
+
+8. The final step before installing Hadoop is a review of your configuration. Figure 5.15 summarizes the actions that are about to take place. Be sure to double-check all settings before you commit to an install.
+
+Image
+Figure 5.15 Ambari final review window
+
+9. During the installation step shown in Figure 5.16, the cluster is actually provisioned with the various software packages. By clicking on the node name, you can drill down into the installation status of every component. Should the installation encounter any errors on specific nodes, these errors will be highlighted on this screen.
+
+Image
+Figure 5.16 Ambari deployment process
+
+10. Once the installation of the nodes is complete, a summary window similar to Figure 5.17 will be displayed. The screen indicates which tasks were completed and identifies any preliminary testing of cluster services.
+
+Image
+Figure 5.17 Ambari summary window
+
+Congratulations! You have just completed installing HDP2.X with Ambari. Consult the online Ambari documentation (http://docs.hortonworks.com/#2) for further details on the installation process.
+
+If you are using Hive and have a FQDN longer than 60 characters (as is common in some cloud deployments), please note that this can cause authentication issues with the MySQL database that Hive installs by default with Ambari. To work around this issue, start the MySQL database with the “--skip-name-resolve” option to disable FQDN resolution and authenticate based only on IP number.
+
+
+
+6. Apache Hadoop YARN Administration
+Administering a YARN cluster involves many things. Those familiar with Hadoop 1 may know that there are many configuration properties and that their values are listed in the Hadoop documentation. Instead of repeating that information here and coming up with different explanations of each property, what we’ll do here is to give practical examples of how you can use open-source tools to manage and understand a complex environment like a YARN cluster.
+
+To effectively administer YARN, we will use the bash scripts and init system scripts developed in Chapter 5, “Installing Apache Hadoop YARN.” Also, YARN and Hadoop in general comprise a distributed data platform written in Java. Naturally, this means that there will be many Java processes running on your servers, so it’s a good idea to know some of the basics concerning those processes and the process for analyzing them should the need arise.
+
+We will not cover Hadoop File System (HDFS) administration in this chapter. It is assumed that most readers are familiar with HDFS operations and can navigate the file system. For those unfamiliar with HDFS, see Appendix F for a short introduction. In addition, further information on HDFS can be found on the Apache Hadoop website: http://hadoop.apache.org/docs/stable/hdfs_user_guide.html. In this chapter, we cover some basic YARN administration scenarios, introduce both Nagios and Ganglia for cluster monitoring, discuss JVM monitoring, and introduce the Ambari management interface.
+
+SCRIPT-BASED CONFIGURATION
+In Chapter 5, “Installing Apache Hadoop YARN,” we presented some bash scripts to help us install and configure Hadoop. If you haven’t read that chapter, we suggest you examine it to get an idea of how we’ll reuse the scripts to manage our cluster once it’s up and running. If you’ve already read Chapter 5, you’ll recall that we use a script called hadoop-xml-conf.sh to do XML file processing. We can reuse these commands to create an administration script that assists us in creating and pushing out Hadoop configuration changes to our cluster. This script, called configure-hadoop2.sh, is part of the hadoop2-install-scripts.tgz tar file from the book’s repository (see Appendix A). A listing of the administration script is also available in Appendix C.
+
+The configure-hadoop2.sh script is designed to push (and possibly delete) configuration properties to the cluster and optionally restart various services within the cluster. Since the bulk of our work for these scripts was presented in Chapter 5, we will use these scripts as a starting point. You will need to set your version of Hadoop in the beginning of the script.
+
+Click here to view code image
+
+HADOOP_VERSION=2.2.0
+HADOOP_HOME="/opt/hadoop-${HADOOP_VERSION}"
+
+The script also sources hadoop-xml-conf.sh, which contains the basic file manipulation commands. We also need to decide whether we want to restart and refresh the Hadoop cluster. The default is refresh=false.
+
+We can reuse our scripts to create a function that adds or overwrites a configuration property.
+
+Click here to view code image
+
+put()
+{
+       put_config --file $file --property $property --value $value
+}
+
+The put_config function from hadoop-xml-conf.sh can be used in the same way as was shown in Chapter 5. In a similar fashion, we can add a function to delete a property.
+
+Click here to view code image
+
+delete()
+{
+       del_config --file $file --property $property
+}
+
+Next, we enlist the help of pdcp to push the file out to the cluster in a single command. We’ve kept the all_hosts file on our machine from the installation process, but in the event you deleted this file, just create a new one with the fully qualified domain names of every host on which you want the configuration file to reside.
+
+Click here to view code image
+
+deploy()
+{
+        echo "Deploying $file to the cluster..."
+pdcp -w ^all_hosts "$file" $HADOOP_HOME/etc/hadoop/
+}
+
+We’ve gotten good use out of our existing scripts to modify configuration files, so all we need is a way to restart Hadoop. We need to be careful as to how we bring down the services on each node, because the order in which the services are brought down and the order in which they’re brought back up makes a difference. The following code will accomplish this task.
+
+Click here to view code image
+
+restart_hadoop()
+{
+        echo "Restarting Hadoop 2..."
+        pdsh -w ^dn_hosts "service hadoop-datanode stop"
+        pdsh -w ^snn_host "service hadoop-secondarynamenode stop"
+        pdsh -w ^nn_host "service hadoop-namenode stop"
+        pdsh -w ^mr_history_host "service hadoop-historyserver stop"
+        pdsh -w ^yarn_proxy_host "service hadoop-proxyserver stop"
+        pdsh -w ^nm_hosts "service hadoop-nodemanager stop"
+        pdsh -w ^rm_host "service hadoop-resourcemanager stop"
+
+        pdsh -w ^nn_host "service hadoop-namenode start"
+        pdsh -w ^snn_host "service hadoop-secondarynamenode start"
+        pdsh -w ^dn_hosts "service hadoop-datanode start"
+        pdsh -w ^rm_host "service hadoop-resourcemanager start"
+        pdsh -w ^nm_hosts "service hadoop-nodemanager start"
+        pdsh -w ^yarn_proxy_host "service hadoop-proxyserver start"
+        pdsh -w ^mr_history_host "service hadoop-historyserver start"
+}
+
+As you can see, we use the init scripts we introduced in Chapter 5 to make restarting Hadoop easier. While each of the scripts has a restart function, Hadoop must be restarted across the cluster in an orderly fashion. The correct order is given in the restart_hadoop() function shown above.
+
+The complete script is listed in the Appendix C and is available in the book repository. The possible script arguments, shown in the following listing, can be found by using the –h argument.
+
+Click here to view code image
+
+configure-hadoop2.sh [options]
+
+OPTIONS:
+   -o, --operation       Valid values are 'put' and 'delete'. A 'put'
+                         operation writes the property and value if it
+                         doesn't exist and overwrites it if it does.
+                         exist. A 'delete' operation removes the property
+   -f, --file            The name of the configuration file.
+   -p, --property        The name of the Hadoop configuration property.
+   -v, --value           The value of the Hadoop configuration property.
+                         Required for a 'put' operation; ignored for a
+                         'delete' operation.
+   -r, --restart         Flag to restart Hadoop. Configuration files are
+                         deployed to the cluster automatically to
+                         $HADOOP_HOME/etc/hadoop.
+   -h, --help            Show this message.
+
+As an example, let’s pick a configuration property that would be a good test candidate. Recall that in Chapter 5 we tested the freshly installed Hadoop cluster by running a simple job. If we wanted to navigate in the YARN web user interface (UI) to obtain the test job details, we would be able to view the details of the job through the MapReduce History server we configured in Chapter 5.
+
+In Figure 6.1, we see the summary information for the test in the YARN web UI. We can look at some of the details of this job by clicking on the link for the one successful reduce task, which should result in Figure 6.2.
+
+Image
+Figure 6.1 MapReduce job history
+
+Image
+Figure 6.2 MapReduce reduce task information
+
+So far, the information looks normal, but let’s see what happens if we drill down further into the task clicking on the “logs” link in the “Logs” column. The result appears in Figure 6.3.
+
+Image
+Figure 6.3 Viewing logs without log aggregation enabled
+
+We don’t see the log file contents, but we do see a message that “Aggregation is not enabled.” If we check the Hadoop 2 documentation (see the discussion of user log aggregation later in this chapter), we see a property called yarn.log-aggregation-enable in the yarn-site.xml file, which has a default value of “false.” We also note the property called yarn.nodemanager.remote-app-log-dir, which has a default value of /tmp/logs. Additionally, the directory we designate for log aggregation must reside in HDFS, which is then accessible to all NodeManagers. Depending on the aggregation directory, we need to either check the permissions for that directory if it exists or create a new directory with appropriate permissions. These steps are accomplished as follows:
+
+Click here to view code image
+
+# su - hdfs -c "hadoop fs -mkdir -p /yarn/logs"
+# su - hdfs -c "hadoop fs -chown -R yarn:hadoop /yarn/logs"
+# su - hdfs -c "hadoop fs -chmod -R g+rw /yarn/logs
+
+To complete the setting, we will use the configure-hadoop2.sh script described previously. First we set the location of the logs (yarn.nodemanager.remote-app-log-dir) to /yarn/logs; next we enable the log aggregation (yarn.log-aggregation-enable). Also note the –r option, which will restart the Hadoop installation with the new setting.
+
+Click here to view code image
+
+# ./configure-hadoop2.sh -o put -f yarn-site.xml \
+-p yarn.nodemanager.remote-app-log-dir \
+-v /yarn/logs –f
+
+# ./configure-hadoop2.sh -o put -f yarn-site.xml \
+-p yarn.log-aggregation-enable -v true –r
+
+Once Hadoop has restarted, we can resubmit the test job and consult the web UI to see if the logs are now available. If the setting worked, you should see something similar to Figure 6.4.
+
+Image
+Figure 6.4 Example of aggregated log output
+
+Other Hadoop properties can be changed in a similar fashion. The configure-hadoop2.sh script provides a simple method to change Hadoop XML files across the entire cluster without the repetitive need to log into individual nodes. It also helps with an orderly restart of the whole cluster.
