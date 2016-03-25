@@ -1,0 +1,237 @@
+MONITORING CLUSTER HEALTH: NAGIOS
+A popular open-source monitoring tool is Nagios (http://www.nagios.org). Nagios monitors your infrastructure with a number of built-in and community-developed plug-ins. It is also possible to write your own plug-ins using a number of different methods, in different languages like C, Python, and shell scripts. We’ve been using bash shell scripts to show installation and configuration, so we’ll stick with that method to show you how to begin to monitor your Hadoop cluster using Nagios. In our example, we’ll use a small, three-node cluster.
+
+The first step is to choose a server in your cluster that will be the Nagios server. This server will act as the hub in our monitoring system. On the machine you choose to be the Nagios server, we recommend you install Nagios using your native package management system. For Red Hat–based systems, this would be done as follows. (Note: This step assumes you have enabled the EPEL repository as explained in Chapter 5.)
+
+# yum install nagios
+
+Other distributions may use different tools (e.g., apt for Debian-based systems).
+
+Once the Nagios RPM is installed, there are a few configuration steps. First, you may want to add your email address to the /etc/nagios/objects/contacts.cfg file. If you want to remotely view the Nagios web UI, you may need to modify the “Allow from” line in the /etc/httpd/conf.d/nagios.conf. Also, check your iptables, in case your firewall is blocking access. It is also a good idea to set a Nagios password by issuing the following command:
+
+Click here to view code image
+
+# htpasswd –c /etc/nagios/passwd nagiosadmin
+
+Finally, make sure that both the httpd and nagios services are running. Use chkconfig to ensure they start on the next reboot. At this point, you should be able to bring up the Nagios web UI by pointing your local browser to http://localhost/nagios.
+
+Once you have the Nagios server installed, you’ll be able to define a large number of objects—such as hosts, host groups, and services—that can be monitored. Although there are other things worth monitoring in the cluster, we will focus on installing and configuring Nagios for monitoring YARN.
+
+Since we will add our own entry for the local host, edit the file /etc/nagios/nagios.cfg and comment out (add # in front of the line) the following line:
+
+Click here to view code image
+
+cfg_file=/etc/nagios/objects/localhost.cfg
+
+To set up our Hadoop 2 cluster monitoring, we first tell Nagios about our servers by creating a file in /etc/nagios/conf.d called hadoop-cluster.cfg. By default, Nagios is configured to look in this directory for files with the *.cfg extension. Listing 6.1 shows us how to define a host so that it becomes available to Nagios.
+
+Listing 6.1 Nagios host definition
+
+Click here to view code image
+
+define host{
+        use                     linux-server
+        host_name               yarn1.apps.hdp
+        alias                   yarn1.apps.hdp
+        address                 192.168.207.231
+        }
+
+Nagios uses templates that allow the administrator to set up a configuration quickly. One such template is linux-server, as shown in Listing 6.1. It is assigned to the “use” directive and instructs Nagios to use the standard Linux monitoring template. The rest of the directives are obvious and include host_name, alias, and address. The alias is used by the Nagios web UI. We also need a host entry for the other two nodes in our cluster (yarn2.apps.hdp and yarn3.apps.hdp).
+
+Once we have all our hosts defined with a define host block, it is very convenient to define a host group for similar nodes in the hadoop-cluster.cfg file. Our host group will look like the definition in Listing 6.2, where we add all the nodes in our Hadoop cluster.
+
+Listing 6.2 Nagios host group definition
+
+Click here to view code image
+
+define hostgroup{
+        hostgroup_name    hadoop-cluster
+        alias                      Hadoop
+        members               yarn1.apps.hdp,yarn2.apps.hdp,yarn3.apps.hdp
+        }
+
+Monitoring Basic Hadoop Services
+In Chapter 5, we deployed scripts to start and stop all of the Hadoop services on the cluster. Nagios can easily monitor these services and display the results of that monitoring on a convenient web interface. The first step is to create a script that will do the service monitoring. According to the Nagios documentation, the following return codes are expected as the result of each command or script that’s run to determine a service state:
+
+OK = 0
+Warning = 1
+Critical = 2
+Unknown = 3
+
+As an example, we will write a plug-in to monitor the state of the ResourceManager. The full listing for the plug-in appears in Appendix D and can be found in the book repository. For this plug-in, we’ll keep things simple and reuse the init scripts that we created in Chapter 5. First, because the ResourceManager is running or stopped, we will use only two return codes.
+
+# Exit codes
+STATE_OK=0
+STATE_CRITICAL=2
+
+As with the other scripts we’ve created, we need code to parse the arguments passed to the script as well as the arguments passed to the help and usage output functions. This code can be found in the full script in Appendix D. The heart of the script is as follows:
+
+Click here to view code image
+
+status=$(/sbin/service hadoop-resourcemanager status)
+
+if echo "$status" | grep --quiet running ; then
+   echo "ResourceManager OK - $status"
+   exit $STATE_OK
+else
+   echo "ResourceManager CRITICAL - $status"
+   exit $STATE_CRITICAL
+fi
+
+The script is fairly simple. We are using the init scripts from Chapter 5 that return one of two responses to the “status” requests (running or stopped).
+
+Click here to view code image
+
+# service hadoop-resourcemanager status
+Hadoop YARN ResourceManager daemon (pid  36772) is running...
+
+# service hadoop-resourcemanager status
+Hadoop YARN ResourceManager daemon is stopped
+
+We can use grep to confirm the “running” response or assume the service is stopped otherwise. Once we’re satisfied with the script, we name it check_resource_manager.sh and put it in the Nagios plug-in directory (e.g., /usr/lib64/nagios/plugins). We tell Nagios about this plug-in by adding the following lines to our hadoop-cluster.cfg file:
+
+Click here to view code image
+
+define command{
+        command_name check_resource_manager
+        command_line /usr/lib64/nagios/plugins/check_resource_manager.sh
+        }
+
+Defining the command is pretty simple: We give the fully qualified path and file names for the actual command and give the command a name that will be used elsewhere in our configuration file.
+
+The next step is to define a Nagios service that uses our new command in the hadoop-cluster.cfg file.
+
+Click here to view code image
+
+define service{
+        use                       local-service
+        host_name                 yarn1.apps.hdp
+        service_description       ResourceManager
+        check_command             check_resource_manager
+        }
+
+The service definition uses a template like the block we used earlier to define a host. This template is called local-service and, as the name suggests, it defines a service local to the Nagios server. The host_name and service_description are self-explanatory. We run this service only on the node that runs the ResourceManager. The check_command is where we see the command_name in the define command block created previously (these names must match).
+
+The next step is to define a service and command entry for each of the other services. To save time, these are provided in Appendix D and online.
+
+To use the new configuration, we need to restart Nagios as follows:
+
+Click here to view code image
+
+# service nagios restart
+
+If everything is working correctly, the new service should be available on the Nagios web UI for yarn1.apps.hdp.
+
+The assumption so far has been that Nagios will monitor local services on the same machine as the Nagios server. Obviously, Hadoop is a distributed system that requires cluster-wide monitoring. Nagios has a few methods available for providing cluster-wide functionality, but the easiest way is with the Nagios Remote Plugin Executor (NRPE). Assuming that the NodeManagers and DataNodes are on remote servers, we need to install the Nagios NRPE on each of these remote servers as follows. (Note: pdsh can be helpful here.)
+
+Click here to view code image
+
+# yum install nrpe nagios-plug-ins
+
+The default configuration for NRPE is to trust only communication from the local host. Thus the first thing to do in an NRPE installation is to tell it where the Nagios server is by specifying its IP address in the /etc/nagios/nrpe.cfg file on the cluster nodes. (Your IP address may be different.)
+
+Click here to view code image
+
+allowed_hosts=127.0.0.1,192.168.207.231
+
+We can use the Nagios script plug-ins found in Appendix D to check the NodeManager and DataNode state. These scripts should be placed in the plug-in directories of the remote machines (/usr/lib64/nagios/plug-ins). When this step is complete, we define the command in the nrpe.cfg file.
+
+Click here to view code image
+
+command[check_node_manager]=/usr/lib64/nagios/plugins/check_node_manager.sh
+command[check_data_node]=/usr/lib64/nagios/plugins/check_data_node.sh
+
+Once we’ve set up the remote servers via NRPE, we can go back to our hadoop-cluster.cfg file on the Nagios server and add the following commands and services:
+
+Click here to view code image
+
+define command{
+ command_name check_nrpe
+ command_line /usr/lib64/nagios/plugins/check_nrpe -H $HOSTNAME$ -c $ARG1$
+       }
+
+define service{
+        use                       local-service
+        host_name                 yarn2.apps.hdp,yarn3.apps.hdp
+        service_description       NodeManager
+        check_command             check_nrpe!check_node_manager
+        }
+
+define service{
+        use                       local-service
+        host_name                 yarn2.apps.hdp,yarn3.apps.hdp
+        service_description       DataNode
+        check_command             check_nrpe!check_data_node
+        }
+
+The NRPE command uses command variable substitution in Nagios. In the define command block, we see several variables that, in Nagios terms, are called macros. The $HOSTNAME$ macro is expanded by Nagios with the host_name value in the service definition. If more than one host is defined, Nagios executes the command remotely on each host specified. The $ARG1$ macro is expanded with the values delimited by the “!” character in the check_command line, which is also found in the service definition.
+
+You may wish to add other services from the Nagios plug-ins (e.g., check_local_load) for all nodes by using the hostgroup_name. In this case, add the service block to the hadoop-cluster.cfg as follows:
+
+Click here to view code image
+
+define service {
+        use                    generic-service
+        hostgroup_name         hadoop-cluster
+        service_description    Current Load
+        check_command          check_local_load!5.0,4.0,3.0!10.0,6.0,4.0
+        }
+
+Monitoring the JVM
+So far, we have defined some basic services that simply monitor the started/stopped state of the various Hadoop daemons. An example of a slightly more complex service is one that monitors a specific portion of the Java Virtual Machine heap space for the ResourceManager process. To create this monitor, we will utilize the command-line tool that ships with the Java Development Kit we installed in Chapter 5.
+
+To write this service, we will take advantage of a tool called jstat. The jstat tool is found in the JDK’s bin directory and displays a large number of JVM statistics. Almost all JDKs provide the jstat tool as part of their installation; for instance, it is available in both the Linux OpenJDK and the Oracle JDK packages. As an example, we will monitor the JVM’s old space utilization as a percentage of the old space’s capacity. The command to do this and its output are shown here:
+
+Click here to view code image
+
+# $JAVA_HOME/bin/jstat -gcutil $(cat /var/run/hadoop/yarn/yarn-yarn-resourcemanager.pid)
+  S0     S1     E      O      P     YGC     YGCT    FGC    FGCT     GCT
+  0.00 100.00  40.85  11.19  99.35      9    0.044     0    0.000    0.044
+
+According to the jstat documentation, the column with the heading “O” identifies the percentage of old space used in the JVM based on the old space’s capacity (in this case, 11.19% of capacity). We use the following lines to create the desired monitor:
+
+Click here to view code image
+
+pct=$("$JAVA_HOME"/bin/jstat -gcutil $(cat "$PIDFILE") | awk 'FNR == 2 {print $4}')
+
+if [ "$pct" > "$critical" ] ; then
+   printf "ResourceManager Heap Old Space %% used %s - %g" CRITICAL "$pct"
+   exit $STATE_CRITICAL
+elif [ "$pct" > "$warn" ]; then
+   printf "ResourceManager Heap Old Space %% used %s - %g" WARN "$pct"
+   exit $STATE_WARNING
+else
+   printf "ResourceManager Heap Old Space %g%% used is %s" "$pct" OK
+   exit $STATE_OK
+fi
+
+In the previous code snippet, the awk command is used to parse the tabular output of the jstat command. In defining the bash “pct” variable, we simply pipe the output of the jstat command to awk, and then tell awk to get the fourth column in the second row of the output. The script snippet assumes the appropriate files have been included via the “source” function so that we have access to the JAVA_HOME variable. You can find the complete script in Appendix D.
+
+Unlike in the previous examples, we may have situations that can pass with a warning instead of meeting a critical threshold. If the “Old Space Percentage Used” passes these thresholds, then Nagios can send the appropriate message.
+
+To use the service, we need to add the following command and service definitions in our hadoop-cluster.cfg file:
+
+Click here to view code image
+
+define command{
+     command_name check_resource_manager_old_space_pct
+     command_line /usr/lib64/nagios/plugins/check_resource_manager_old_space_pct.sh -w $ARG1$ -c $ARG2$
+     }
+
+define service{
+     use                    local-service
+     host_name              yarn1.apps.hdp
+     service_description    ResourceManager Old Space Pct Used
+     check_command          check_resource_manager_old_space_pct!50!75
+     }
+
+In the define command section, the option values of –w and –c are used to signify the warning and critical levels and are reserved for use by Nagios. In our example, we’re using 50% as a warning value and 75% as a critical value; these values are appended to the check_resource_manager_old_space_pct command we created earlier.
+
+Nagios also has many publicly available plug-ins that are found in /usr/lib64/nagios/plug-ins (assuming a 64-bit server platform). If you are using a Red Hat–based system, you can issue the following command to see which plug-ins are available:
+
+# yum search nagios
+
+One widely used tool is ping. As the name implies, it pings servers in your infrastructure to see if they can respond to a basic ping. If you install the ping plug-in (e.g., #yum install nagios-plug-ins-ping), you’ll find it in the plug-in directory as a command called check_ping.
+
+Putting it all together, when we have our monitoring scripts written, and our Hadoop cluster hosts, commands, and services defined in a configuration file available to Nagios, we are able to monitor our cluster as shown in Figure 6.5.
+
