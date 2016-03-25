@@ -1,0 +1,52 @@
+REAL-TIME MONITORING: GANGLIA
+Nagios is great for monitoring and sending out alerts for events, but it does not provide real-time monitoring of the cluster. To get a real-time view of the cluster, the Ganglia monitoring system can be used. Ganglia’s strength is that it ships with a large number of metrics for which it is able to generate real-time graphs. For the more visually inclined system administrator, this is the tool for you.
+
+The Ganglia monitoring daemon is called gmond and must be installed on all servers you wish to monitor. On your main monitoring node, install the following packages:
+
+Click here to view code image
+
+# yum install ganglia ganglia-web ganglia-gmetad ganglia-gmond
+
+All other nodes need only the monitoring daemon, which can be installed using pdsh.
+
+Click here to view code image
+
+# pdsh -w ^all_hosts yum install ganglia-gmond
+
+You will need to add the multicast route to the monitoring node as follows:
+
+Click here to view code image
+
+# route add -host 239.2.11.71 dev eth0
+
+Change eth0 to the cluster-wide Ethernet port (i.e., eth0, eth1, eth2, ...). This command can be made automatic on the next boot by adding it to the /etc/rc.local file on the monitoring node.
+
+On the main monitoring node, edit the /etc/ganglia/gmetad.conf and make sure the following line is present in the file. This line tells the gmetad collection daemon to get all cluster data from the local gmond monitoring daemon.
+
+Click here to view code image
+
+data_source "my cluster" localhost
+
+On all cluster nodes (including the monitoring node), edit the file /etc/ganglia/gmond.conf and enter a value for the cluster name by replacing the “unspecified” value in the cluster block shown in the following listing. Other values are optional but all values must be the same on all nodes in the cluster.
+
+Click here to view code image
+
+cluster {
+  name = "unspecified"
+  owner = "unspecified"
+  latlong = "unspecified"
+  url = "unspecified"
+}
+
+On the main monitoring node, start the data collection daemon and all monitoring daemons as follows:
+
+Click here to view code image
+
+# service gmetad start
+# pdsh -w ^all_hosts service gmond start
+
+Both gmond and gmetad can be set to start automatically by using chkconfig. The ganglia webpage can be viewed by opening a web browser on the monitoring node using the local Ganglia URL: http://localhost/ganglia. An example Ganglia page is shown in Figure 6.6.
+
+Image
+Figure 6.6 Ganglia monitoring a Hadoop cluster
+
