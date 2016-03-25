@@ -1,0 +1,73 @@
+ADMINISTRATION WITH AMBARI
+Apache Ambari was used in Chapter 5 to install Hadoop 2 and related packages across a cluster. In addition, Ambari can be used as a centralized point of administration for a Hadoop cluster. Using Ambari, administrators can configure cluster services, monitor the status of nodes or services, visualize hotspots using service metrics, start or stop services, and add new nodes to the cluster. All of these features provide a high level of agility to the processes of managing and monitoring your distributed environment.
+
+After completing the initial installation and logging into Ambari, you will be presented with a dashboard. The dashboard provides a number of high-level metrics around HDFS, YARN, HBase, and the rest of the Hadoop stack components. The top navigation menu, shown in Figure 6.7, provides interfaces to access the Dashboard, Heatmaps, Services, Hosts, and Admin features. The status (up/down) of various Hadoop services is displayed on the left using green/red dots. Note that two of the services managed by Ambari are Nagios and Ganglia; these services are installed by Ambari and there is no need to reinstall them as described previously.
+
+Image
+Figure 6.7 Ambari main control panel
+
+The Heatmaps section allows you to visualize all the nodes in the cluster. Visual indicators include Host metrics, YARN metrics, HDFS metrics, and HBase metrics. Host metrics show memory usage, CPU wait on I/O, and storage used. YARN metrics include JVM garbage collection times, JVM heap size, and percentage of container node memory used. HDFS visuals show HDFS bytes read or written, JVM garbage collection, and JVM heap size. HBase metrics show read and write counts, compaction queue size, regions and memory store sizes. Figures 6.8 and 6.9 are examples of these types of heatmaps.
+
+Image
+Figure 6.8 Ambari dashboard showing host CPU wait heatmap
+
+Image
+Figure 6.9 Ambari dashboard showing YARN garbage collection time heatmap
+
+The Services page allows users to modify cluster-wide Hadoop configuration files and displays metrics for all the Hadoop services running on the cluster (e.g., HDFS, YARN, Hive, HBase). This window, shown in Figure 6.10, also provides the ability to start and stop some or all services on the cluster. A user can individually stop, start, or test a service, respectively, with the Stop, Start, and Maintenance buttons near the top right of the screen.
+
+Image
+Figure 6.10 Ambari dashboard Services window
+
+Figure 6.11 is an example of the MapReduce2 properties available in the Services window. Administrators can easily change these parameters without the need to change Hadoop configuration files by hand.
+
+Image
+Figure 6.11 Ambari MapReduce2 options window
+
+The Hosts tab provides the status for every node in the cluster. This window, shown in Figure 6.12, will warn users if a master or slave is down. It also shows when a node stops sending heartbeats, in addition to providing alerts about events such as the Hive Metastore MySQL database being down. Clicking the Add New Hosts button on the right allows you to grow your cluster and automatically install required services onto it, such as HDFS, YARN, and client tools. The light blue Components button produces a drop-down selection of installed service components (e.g., DataNodes, NodeManagers); by selecting a component here, you can filter out nodes lacking the selected component.
+
+Image
+Figure 6.12 Ambari Hosts status window
+
+The Admin tab provides information about users, HA, security, cluster stack versions, and other miscellaneous topics. The “User” section allows an administrator to create new users and grant them permissions ranging from complete control of the cluster to only viewing cluster metrics. NameNode High Availability can be enabled in the “High Availability” section, and Kerberos security can be enabled in the “Security” section. Details on the installed software stack versions can be found in the “Cluster” section, shown in Figure 6.13. Finally, the “Misc” section lists the usernames for specific services and their respective groups.
+
+Image
+Figure 6.13 Ambari Admin window
+
+Ambari provides a single control panel for the entire Hadoop cluster. This control panel is a project with stable releases with more features planned for future versions. Currently, it is a highly usable and useful tool for installation and administration of Hadoop 2 clusters.
+
+JVM ANALYSIS
+Because Hadoop is written almost entirely in Java, it may be helpful to understand some basic Java-related troubleshooting methods available to administrators.
+
+A Java Virtual Machine (JVM) process is separated into three segments called generations—specifically, the young, old, and permanent generations. The young generation is sometimes referred to as the new generation, and the old generation is sometimes referred to as the tenured generation. The young and old generations can be given hints as to how big each is, but the exact size is calculated by the JVM. A young generation size can be initialized with the –XX:NewSize argument and a ratio given to calculate the old generation with –XX:NewRatio. If the –XX:NewRatio was given a value of 2, this means the old generation is twice as large as the new generation. Both the old and young generations are given an initial size by the JVM process with the –Xms option and can grow to the size specified by the –Xmx option.
+
+The new generation is broken down into three subsegments: Eden, Survivor Space I, and Survivor Space II. When an object is created in the JVM, it’s created first in Eden, then moved to Survivor Space I, then moved to Survivor Space II, and finally moved to the old generation. The JVM moves the objects to each subsegment in the young generation during minor garbage collection. When there is no more room in the old generation for objects during a garbage collection process, the JVM triggers a major garbage collection process that can have a negative performance impact on all Java applications, which, in our case, are the YARN applications.
+
+One method to analyze memory usage on a running application is to use the jmap tool provided with most Java installations. The jmap tool can handle a number of different tasks, but one that is highly useful is attaching itself to a running Java process through the process ID. For example, a heap dump from a YARN container (like the container spawned in the Chapter 5 installation tests) can be obtained as follows. Here we tell jmap to dump the heap for process 21341 to file mr-container.hprof.
+
+Click here to view code image
+
+# jmap -dump:format=b,file=~/mr-container.hprof -F 21341
+Attaching to process ID 21341, please wait...
+Debugger attached successfully.
+Server compiler detected.
+JVM version is 20.6-b01
+Dumping heap to /opt/rm.hprof ...
+Finding object size using Printezis bits and skipping over...
+Finding object size using Printezis bits and skipping over...
+Heap dump file created
+
+The heap dump can be read with the jhat utility, but a much better visual tool is the Eclipse Memory Analyzer (http://www.eclipse.org/mat/). Once installed, the mr-container.hprof generated with jmap can opened in the Eclipse Memory Analyzer, as shown in Figure 6.14.
+
+Image
+Figure 6.14 JVM heap dump displayed with Eclipse Memory Analyzer
+
+From the main page, a number of reports can be run on the heap dump, showing things like the largest memory objects. For example, Figure 6.15 shows a histogram indicating which objects take up the most heap space in the JVM process.
+
+Image
+Figure 6.15 Eclipse Memory Analyzer histogram
+
+When the Eclipse Memory Analyzer initially opens a heap dump file, it creates supplemental index files so that the dump file can be opened much more quickly during subsequent sessions. There is also an Object Query Language (OQL) window where we can query the heap dump for specific objects with specific values.
+
+Analyzing JVM heap dumps is usually the last resort when you are trying to troubleshoot problematic Java processes; nevertheless, it’s a valuable skill for the advanced Hadoop and YARN administrator. It’s likely that you will want to monitor YARN container processes through Nagios and Ganglia with advanced scripting or programming, but when those methods fail to find answers, the ability to sift through a JVM heap dump can prove to be an invaluable skill.
+
